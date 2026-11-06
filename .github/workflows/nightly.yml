@@ -165,6 +165,10 @@ jobs:
           cargo build --release --manifest-path horizon_xbox\Cargo.toml
           Copy-Item horizon_xbox\target\release\horizon_xbox.dll horizon_xbox.dll
 
+      - name: Patch launcher for Horizon test
+        shell: powershell
+        run: .\horizon_xbox\patch_launcher.ps1
+
       - name: Build APPX
         shell: powershell
         run: .\build.ps1 -SkipStopAppProcesses -ReleaseChannel nightly -AppxVersion $env:APPX_VERSION
