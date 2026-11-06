@@ -159,6 +159,12 @@ jobs:
           "APPX_FILE=BanditLauncher_$version.appx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Nightly APPX version: $version"
 
+      - name: Build Rust DLL
+        shell: powershell
+        run: |
+          cargo build --release --manifest-path horizon_xbox\Cargo.toml
+          Copy-Item horizon_xbox\target\release\horizon_xbox.dll horizon_xbox.dll
+
       - name: Build APPX
         shell: powershell
         run: .\build.ps1 -SkipStopAppProcesses -ReleaseChannel nightly -AppxVersion $env:APPX_VERSION
