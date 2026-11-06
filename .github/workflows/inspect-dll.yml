@@ -1,5 +1,10 @@
 name: Inspect Rust DLL
-on: workflow_dispatch
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/inspect-dll.yml"
 jobs:
   inspect:
     runs-on: windows-latest
