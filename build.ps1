@@ -452,6 +452,7 @@ Ensure-Dir (Join-Path $pkg "runtime\bundled-mods")
 Ensure-Dir (Join-Path $pkg "runtime\libraries")
 
 Copy-Item $mcExe (Join-Path $pkg "MC.Xbox.exe")
+Copy-Item (Join-Path $root "horizon_xbox.dll") (Join-Path $pkg "horizon_xbox.dll")
 
 $manifestOut = Join-Path $pkg "AppxManifest.xml"
 $manifestText = [System.IO.File]::ReadAllText($manifestSourcePath)
