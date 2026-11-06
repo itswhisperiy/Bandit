@@ -1,0 +1,15 @@
+[package]
+name = "horizon_xbox"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+windows = { version = "0.58", features = ["Foundation", "Foundation_Collections", "ApplicationModel_Core", "UI_Core"] }
+
+[profile.release]
+opt-level = 3
+lto = true
