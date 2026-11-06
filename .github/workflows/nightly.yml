@@ -126,6 +126,8 @@ jobs:
 
       - name: Build Rust DLL and patch launcher
         shell: powershell
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           cargo build --release --manifest-path horizon_xbox\Cargo.toml
           if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
@@ -135,6 +137,16 @@ jobs:
       - name: Build APPX
         shell: powershell
         run: .\build.ps1 -SkipStopAppProcesses -ReleaseChannel nightly-native -AppxVersion $env:APPX_VERSION
+
+      - name: Check Rust DLL is in the package
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("$PWD\output\$env:APPX_FILE")
+          $found = @($zip.Entries | Where-Object { $_.FullName -like '*horizon_xbox*' })
+          $zip.Dispose()
+          if ($found.Count -eq 0) { Write-Host "NOT IN PACKAGE: horizon_xbox.dll" }
+          foreach ($e in $found) { Write-Host "IN PACKAGE: $($e.FullName) $($e.Length) bytes" }
 
       - name: Stage native release assets
         shell: powershell
