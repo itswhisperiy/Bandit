@@ -15,7 +15,7 @@ if (-not $b.Contains('horizon_xbox.dll')) {
     Write-Host "build.ps1 already has the DLL line"
 }
 
-# 2. minecraft_launch.cpp: run the Rust DLL once, on first Play after install
+# 2. minecraft_launch.cpp: run the Rust DLL until it succeeds once
 $path = Join-Path $PWD "MC.Xbox\launch\minecraft_launch.cpp"
 $text = [System.IO.File]::ReadAllText($path)
 if ($text.Contains('RunHorizonXbox')) {
@@ -55,15 +55,18 @@ static bool RunHorizonXbox(const std::wstring& logDir) {
 $call = @'
 {
         EnsureDirectoryTree(gameDir);
-        const std::wstring horizonMarker = gameDir + L"\\horizon_test_done.txt";
+        const std::wstring horizonMarker = gameDir + L"\\horizon_test_ok.txt";
         if (GetFileAttributesW(horizonMarker.c_str()) == INVALID_FILE_ATTRIBUTES) {
-            WriteTextFile(horizonMarker, L"Horizon test ran once. Delete this file to run it again.\n");
             const std::wstring horizonLogDir = LogsCurrentDir(exeDir);
             EnsureDirectoryTree(horizonLogDir);
-            WriteLog(L"First launch after install: running the Rust DLL instead of Java");
+            WriteLog(L"Running the Rust DLL test before Java");
             const bool horizonOk = RunHorizonXbox(horizonLogDir);
-            g_minecraftRunning.store(false);
-            return horizonOk;
+            if (horizonOk) {
+                WriteTextFile(horizonMarker, L"Horizon test succeeded once. Delete this file to run it again.\n");
+                g_minecraftRunning.store(false);
+                return true;
+            }
+            WriteLog(L"Rust DLL test failed; continuing with Java, will retry next launch");
         }
     }
 
