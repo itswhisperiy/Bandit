@@ -1,0 +1,17 @@
+name: Inspect Rust DLL
+on: workflow_dispatch
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        shell: powershell
+        run: cargo build --release --manifest-path horizon_xbox\Cargo.toml
+      - name: List dependencies
+        shell: powershell
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $d = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          & $d.FullName /dependents horizon_xbox\target\release\horizon_xbox.dll
+          & $d.FullName /headers horizon_xbox\target\release\horizon_xbox.dll | Select-String "machine|subsystem"
