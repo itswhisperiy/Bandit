@@ -33,13 +33,18 @@ static bool RunHorizonXbox(const std::wstring& logDir) {
 '@
 
 $call = @'
-if (DirectoryExists(gameDir + L"\\horizon_test")) {
-        const std::wstring horizonLogDir = LogsCurrentDir(exeDir);
-        EnsureDirectoryTree(horizonLogDir);
-        WriteLog(L"horizon_test folder found: running the Rust DLL instead of Java");
-        const bool horizonOk = RunHorizonXbox(horizonLogDir);
-        g_minecraftRunning.store(false);
-        return horizonOk;
+{
+        EnsureDirectoryTree(gameDir);
+        const std::wstring horizonMarker = gameDir + L"\\horizon_test_done.txt";
+        if (GetFileAttributesW(horizonMarker.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            WriteTextFile(horizonMarker, L"Horizon test ran once. Delete this file to run it again.\n");
+            const std::wstring horizonLogDir = LogsCurrentDir(exeDir);
+            EnsureDirectoryTree(horizonLogDir);
+            WriteLog(L"First launch after install: running the Rust DLL instead of Java");
+            const bool horizonOk = RunHorizonXbox(horizonLogDir);
+            g_minecraftRunning.store(false);
+            return horizonOk;
+        }
     }
 
     
