@@ -1,0 +1,139 @@
+use std::ffi::c_void;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::ptr::NonNull;
+
+unsafe fn read_wide(ptr: *const u16) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0;
+    while *ptr.add(len) != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len))
+}
+
+fn elog(dir: &str, msg: &str) {
+    let path = format!("{}\\horizon_xbox.log", dir);
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "{}", msg);
+    }
+}
+
+// Keeps Horizon's client code linked into this DLL.
+#[no_mangle]
+pub extern "system" fn horizon_engine_probe() -> usize {
+    let f: fn() = horizon_client::entry::main;
+    f as usize
+}
+
+fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String> {
+    use raw_window_handle::{
+        RawDisplayHandle, RawWindowHandle, WinRtWindowHandle, WindowsDisplayHandle,
+    };
+
+    elog(dir, "gpu: create instance");
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::DX12;
+    let instance = wgpu::Instance::new(desc);
+
+    let nn = NonNull::new(win as *mut c_void).ok_or("null CoreWindow pointer")?;
+    let target = wgpu::SurfaceTargetUnsafe::RawHandle {
+        raw_display_handle: Some(RawDisplayHandle::Windows(WindowsDisplayHandle::new())),
+        raw_window_handle: RawWindowHandle::WinRt(WinRtWindowHandle::new(nn)),
+    };
+    elog(dir, "gpu: create surface from CoreWindow");
+    let surface = unsafe { instance.create_surface_unsafe(target) }
+        .map_err(|e| format!("surface: {e}"))?;
+
+    elog(dir, "gpu: request adapter");
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(&surface),
+        force_fallback_adapter: false,
+        ..Default::default()
+    }))
+    .map_err(|e| format!("adapter: {e}"))?;
+    elog(dir, &format!("gpu: adapter {:?}", adapter.get_info()));
+
+    elog(dir, "gpu: request device");
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            .map_err(|e| format!("device: {e}"))?;
+
+    let config = surface
+        .get_default_config(&adapter, width, height)
+        .ok_or("no default surface configuration")?;
+    elog(dir, &format!("gpu: configure surface {:?}", config.format));
+    surface.configure(&device, &config);
+
+    elog(dir, "gpu: drawing for 6 seconds (blue, green, red)");
+    let start = std::time::Instant::now();
+    let mut drawn = 0u32;
+    let mut skipped = 0u32;
+    while start.elapsed().as_secs() < 6 {
+        let frame = match surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            _ => {
+                skipped += 1;
+                std::thread::sleep(std::time::Duration::from_millis(16));
+                continue;
+            }
+        };
+        let band = ((start.elapsed().as_secs() / 2) as usize).min(2);
+        let c = [(0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)][band];
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        {
+            let _pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r: c.0, g: c.1, b: c.2, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+        }
+        queue.submit(std::iter::once(enc.finish()));
+        frame.present();
+        drawn += 1;
+        if drawn % 60 == 0 {
+            elog(dir, &format!("gpu: frame {} at {} ms", drawn, start.elapsed().as_millis()));
+        }
+    }
+    elog(dir, &format!("gpu: done, drawn {drawn}, skipped {skipped}"));
+    Ok(())
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn horizon_engine_gpu_test(
+    core_window: *mut c_void,
+    width: u32,
+    height: u32,
+    log_dir: *const u16,
+) -> i32 {
+    let dir = read_wide(log_dir);
+    let hook_dir = dir.clone();
+    std::panic::set_hook(Box::new(move |info| {
+        elog(&hook_dir, &format!("PANIC: {info}"));
+    }));
+    match std::panic::catch_unwind(|| gpu_test(&dir, core_window as usize, width, height)) {
+        Ok(Ok(())) => 0,
+        Ok(Err(e)) => {
+            elog(&dir, &format!("gpu test failed: {e}"));
+            1
+        }
+        Err(_) => {
+            elog(&dir, "gpu test panicked");
+            2
+        }
+    }
+}
