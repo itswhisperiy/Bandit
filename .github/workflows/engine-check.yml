@@ -1,0 +1,33 @@
+name: Check engine DLL code
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/engine-check.yml"
+      - "horizon_xbox/engine/**"
+      - "horizon_xbox/patch_wgpu.ps1"
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the engine crate
+        shell: powershell
+        run: |
+          rustup update stable
+          git clone --depth 1 https://github.com/horizon-rust/horizon.git horizon-src
+          .\horizon_xbox\patch_wgpu.ps1
+          $crate = "horizon-src\crates\horizon-engine"
+          New-Item -ItemType Directory -Force "$crate\src" | Out-Null
+          Copy-Item horizon_xbox\engine\Cargo.toml.txt "$crate\Cargo.toml" -Force
+          Copy-Item horizon_xbox\engine\lib.rs.txt "$crate\src\lib.rs" -Force
+          $root = "horizon-src\Cargo.toml"
+          $t = Get-Content $root -Raw
+          if ($t -notmatch '"crates/\*"' -and $t -notmatch 'crates/horizon-engine') {
+            $t = $t -replace 'members\s*=\s*\[', "members = [`n  `"crates/horizon-engine`","
+            Set-Content $root $t
+          }
+          cd horizon-src
+          cargo check -p horizon-engine
