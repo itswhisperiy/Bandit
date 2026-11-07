@@ -1,0 +1,13 @@
+[package]
+name = "horizon-engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+horizon-client = { path = "../horizon-client", default-features = false }
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "dx12", "wgsl"] }
+raw-window-handle = "0.6"
+pollster = "0.4"
