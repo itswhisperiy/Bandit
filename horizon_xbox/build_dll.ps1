@@ -35,7 +35,7 @@ if ($t -notmatch '"crates/\*"' -and $t -notmatch 'crates/horizon-engine') {
     Set-Content $root $t
 }
 
-$env:RUSTFLAGS = "-C target-feature=+crt-static -C link-arg=/DELAYLOAD:uxtheme.dll -C link-arg=delayimp.lib"
+$env:RUSTFLAGS = "-C target-feature=+crt-static -C link-arg=/DELAYLOAD:uxtheme.dll -C link-arg=/DELAYLOAD:user32.dll -C link-arg=delayimp.lib"
 Push-Location horizon-src
 cargo build --release -p horizon-engine
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "engine build failed" }
