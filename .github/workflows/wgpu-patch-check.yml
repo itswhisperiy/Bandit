@@ -1,0 +1,54 @@
+name: Check wgpu patch
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/wgpu-patch-check.yml"
+      - "horizon_xbox/patch_wgpu.ps1"
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Clone Horizon and apply the patch
+        shell: powershell
+        run: |
+          git clone --depth 1 https://github.com/horizon-rust/horizon.git horizon-src
+          .\horizon_xbox\patch_wgpu.ps1
+          git -C horizon-src diff --stat
+      - name: Compile the patched wgpu
+        shell: powershell
+        run: |
+          rustup update stable
+          $crate = "horizon-src\crates\horizon-gputest"
+          New-Item -ItemType Directory -Force "$crate\src" | Out-Null
+          @'
+          [package]
+          name = "horizon-gputest"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "dx12", "wgsl"] }
+          '@ | Set-Content "$crate\Cargo.toml"
+          "pub use wgpu;" | Set-Content "$crate\src\lib.rs"
+          $root = "horizon-src\Cargo.toml"
+          $t = Get-Content $root -Raw
+          if ($t -notmatch '"crates/\*"' -and $t -notmatch 'crates/horizon-gputest') {
+            $t = $t -replace 'members\s*=\s*\[', "members = [`n  `"crates/horizon-gputest`","
+            Set-Content $root $t
+          }
+          cd horizon-src
+          cargo check -p horizon-gputest
+  api-usage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show how Horizon calls wgpu
+        run: |
+          git clone --depth 1 https://github.com/horizon-rust/horizon.git h
+          cd h/crates/horizon-client-render/src
+          for p in "Instance::new|InstanceDescriptor" "request_adapter" "request_device" "SurfaceConfiguration \{" "get_current_texture" "begin_render_pass"; do
+            echo "=== $p ==="
+            grep -n -A10 -E "$p" gfx.rs | head -28
+          done
