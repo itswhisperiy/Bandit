@@ -133,6 +133,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
           Copy-Item horizon_xbox\target\release\horizon_xbox.dll horizon_xbox.dll
           .\horizon_xbox\patch_launcher.ps1
+          $p = "MC.Xbox\launch\minecraft_launch.cpp"
+          $t = [System.IO.File]::ReadAllText("$PWD\$p")
+          [System.IO.File]::WriteAllText("$PWD\$p", $t.Replace('horizon_test_ok.txt','horizon_render_ok.txt'), (New-Object System.Text.UTF8Encoding($true)))
 
       - name: Build APPX
         shell: powershell
