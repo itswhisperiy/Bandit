@@ -103,7 +103,7 @@ fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String
             });
         }
         queue.submit(std::iter::once(enc.finish()));
-        frame.present();
+        queue.present(frame);
         drawn += 1;
         if drawn % 60 == 0 {
             elog(dir, &format!("gpu: frame {} at {} ms", drawn, start.elapsed().as_millis()));
