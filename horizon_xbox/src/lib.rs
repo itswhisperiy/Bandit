@@ -1,3 +1,4 @@
+mod probe;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::mem::ManuallyDrop;
