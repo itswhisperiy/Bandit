@@ -1,0 +1,28 @@
+name: Map wgpu-hal surface code
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/horizon-map3.yml"
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Horizon
+        run: git clone --depth 1 https://github.com/horizon-rust/horizon.git h
+      - name: Print the code sections
+        run: |
+          cd h/third_party/wgpu-hal/src/dx12
+          echo "=== instance.rs 125-175 ==="
+          sed -n '125,175p' instance.rs
+          echo "=== mod.rs 548-600 ==="
+          sed -n '548,600p' mod.rs
+          echo "=== mod.rs 620-650 ==="
+          sed -n '620,650p' mod.rs
+          echo "=== mod.rs 1535-1600 ==="
+          sed -n '1535,1600p' mod.rs
+          echo "=== adapter.rs 1305-1316 ==="
+          sed -n '1305,1316p' adapter.rs
+          echo "=== adapter.rs 1362-1375 ==="
+          sed -n '1362,1375p' adapter.rs
