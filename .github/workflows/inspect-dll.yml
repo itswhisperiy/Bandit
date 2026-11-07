@@ -5,6 +5,7 @@ on:
       - main-native
     paths:
       - ".github/workflows/inspect-dll.yml"
+      - "horizon_xbox/**"
 jobs:
   inspect:
     runs-on: windows-latest
