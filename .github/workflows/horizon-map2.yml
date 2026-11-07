@@ -1,0 +1,24 @@
+name: Map Horizon graphics code
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/horizon-map2.yml"
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Horizon
+        run: git clone --depth 1 https://github.com/horizon-rust/horizon.git h
+      - name: Patch section and graphics code
+        run: |
+          cd h
+          echo "== patch section =="
+          grep -n -A12 "^\[patch" Cargo.toml
+          echo "== third_party =="
+          ls third_party
+          echo "== dx12 surface code =="
+          grep -rn --include=*.rs -E "fn create_surface|WinRt|Win32\(|CompositionVisual|SwapChainPanel|CreateSwapChainFor" third_party | grep dx12 | cut -c1-170 | head -40
+          echo "== winit version =="
+          grep -n -A1 'name = "winit"' Cargo.lock | head -4
