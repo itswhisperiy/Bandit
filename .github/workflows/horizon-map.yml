@@ -1,0 +1,22 @@
+name: Map Horizon window code
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/horizon-map.yml"
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Horizon
+        run: git clone --depth 1 https://github.com/horizon-rust/horizon.git h
+      - name: Find window and surface code
+        run: |
+          cd h/crates
+          echo "== crates that depend on winit =="
+          grep -l "winit" */Cargo.toml
+          echo "== window and surface code =="
+          grep -rn --include=*.rs -E "EventLoop|ApplicationHandler|create_window|WindowAttributes|create_surface|raw_window_handle|run_app" . | cut -c1-170 | head -100
+          echo "== game folder sizes =="
+          wc -l horizon-client/src/game/*.rs 2>/dev/null | sort -n | tail -15
