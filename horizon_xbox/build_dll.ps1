@@ -4,29 +4,12 @@ if (-not (Test-Path horizon-src)) {
     git clone --depth 1 https://github.com/horizon-rust/horizon.git horizon-src
     if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
 }
+.\horizon_xbox\patch_wgpu.ps1
 
-# Engine DLL: Horizon's client in a small cdylib, built inside Horizon's workspace
 $crate = "horizon-src\crates\horizon-engine"
 New-Item -ItemType Directory -Force "$crate\src" | Out-Null
-@'
-[package]
-name = "horizon-engine"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-horizon-client = { path = "../horizon-client", default-features = false }
-'@ | Set-Content "$crate\Cargo.toml"
-@'
-#[no_mangle]
-pub extern "system" fn horizon_engine_probe() -> usize {
-    let f: fn() = horizon_client::entry::main;
-    f as usize
-}
-'@ | Set-Content "$crate\src\lib.rs"
+Copy-Item horizon_xbox\engine\Cargo.toml.txt "$crate\Cargo.toml" -Force
+Copy-Item horizon_xbox\engine\lib.rs.txt "$crate\src\lib.rs" -Force
 
 $root = "horizon-src\Cargo.toml"
 $t = Get-Content $root -Raw
@@ -41,21 +24,6 @@ cargo build --release -p horizon-engine
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "engine build failed" }
 Pop-Location
 
-# List every function the engine imports, for the stub to check on the Xbox
-$vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-$d = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
-$out = & $d.FullName /imports horizon-src\target\release\horizon_engine.dll
-$dll = $null
-$lines = @()
-foreach ($l in $out) {
-    if ($l -match 'delay load imports') { break }
-    if ($l -match '^\s{4}(\S+\.dll)\s*$') { $dll = $Matches[1]; continue }
-    if ($dll -and $l -match '^\s+[0-9A-Fa-f]+\s+([A-Za-z_][A-Za-z0-9_@?$]*)\s*$') { $lines += "$dll!$($Matches[1])" }
-}
-$lines | Sort-Object -Unique | Set-Content horizon_xbox\src\imports.txt
-Write-Host "Engine imports listed: $($lines.Count)"
-
-# Stub DLL (small, known to load)
 $env:RUSTFLAGS = "-C target-feature=+crt-static"
 cargo build --release --manifest-path horizon_xbox\Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw "stub build failed" }
@@ -63,7 +31,6 @@ if ($LASTEXITCODE -ne 0) { throw "stub build failed" }
 Copy-Item horizon_xbox\target\release\horizon_xbox.dll horizon_xbox.dll -Force
 Copy-Item horizon-src\target\release\horizon_engine.dll horizon_engine.dll -Force
 
-# Make build.ps1 package both DLLs
 $bp = Join-Path $PWD "build.ps1"
 $b = [System.IO.File]::ReadAllText($bp)
 $needle = 'Copy-Item $mcExe (Join-Path $pkg "MC.Xbox.exe")'
