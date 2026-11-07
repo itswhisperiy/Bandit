@@ -181,6 +181,8 @@ pub unsafe extern "system" fn horizon_xbox_run(local_state: *const u16) -> i32 {
         log(&dir, &format!("horizon linked, entry at {:p}", f as *const ()));
     }
     probe::probe_dlls(&dir);
+    probe::probe_imports(&dir);
+    probe::try_load_engine(&dir);
     return 0;
     match render_test(&dir, &window, b.Width as u32, b.Height as u32) {
         Ok(()) => {
