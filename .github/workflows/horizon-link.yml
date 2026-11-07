@@ -1,0 +1,66 @@
+name: Link Horizon into DLL
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/horizon-link.yml"
+jobs:
+  link:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fetch Horizon and update Rust
+        shell: powershell
+        run: |
+          rustup update stable
+          git clone --depth 1 https://github.com/horizon-rust/horizon.git horizon-src
+          Get-ChildItem horizon-src\crates -Directory | Select-Object -ExpandProperty Name | Select-Object -First 80
+          Select-String -Path horizon-src\Cargo.toml -Pattern 'members|exclude|\[patch|\[workspace' | Select-Object -First 20
+
+      - name: Add a test crate to Horizon's workspace
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force horizon-src\crates\horizon-link\src | Out-Null
+          @'
+          [package]
+          name = "horizon-link"
+          version = "0.1.0"
+          edition = "2021"
+
+          [lib]
+          crate-type = ["cdylib"]
+
+          [dependencies]
+          horizon-client = { path = "../horizon-client", default-features = false }
+          '@ | Set-Content horizon-src\crates\horizon-link\Cargo.toml
+          @'
+          #[no_mangle]
+          pub extern "system" fn horizon_link_probe() -> usize {
+              let f: fn() = horizon_client::entry::main;
+              f as usize
+          }
+          '@ | Set-Content horizon-src\crates\horizon-link\src\lib.rs
+          $root = "horizon-src\Cargo.toml"
+          $t = Get-Content $root -Raw
+          if ($t -notmatch '"crates/\*"' -and $t -notmatch 'crates/horizon-link') {
+            $t = $t -replace 'members\s*=\s*\[', "members = [`n  `"crates/horizon-link`","
+            Set-Content $root $t
+          }
+
+      - name: Build
+        shell: powershell
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cd horizon-src
+          cargo build --release -p horizon-link
+
+      - name: List dependencies
+        shell: powershell
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $d = Get-ChildItem "$vs\VC\Tools\MSVC" -Recurse -Filter dumpbin.exe | Where-Object { $_.FullName -like '*Hostx64\x64*' } | Select-Object -First 1
+          & $d.FullName /dependents horizon-src\target\release\horizon_link.dll
