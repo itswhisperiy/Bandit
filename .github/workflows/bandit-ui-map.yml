@@ -1,0 +1,19 @@
+name: Map Bandit UI presentation
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/bandit-ui-map.yml"
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Find how Bandit presents its UI
+        run: |
+          cd MC.Xbox
+          echo "== swapchain and composition =="
+          grep -rn -E "CreateSwapChain|SwapChainPanel|IDCompositionVisual|SetSwapChain|ResizeBuffers|IDXGISwapChain|->Present\(" --include=*.cpp --include=*.h . | cut -c1-180 | head -60
+          echo "== launch hand-off =="
+          grep -rn -E "RunEmbeddedMinecraft|g_minecraftRunning|ReleaseGraphics|ShutdownUi|StopRender|DestroyD3D|SuspendRender" --include=*.cpp --include=*.h . | cut -c1-180 | head -50
