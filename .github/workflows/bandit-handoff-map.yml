@@ -1,0 +1,23 @@
+name: Map Bandit window hand-off
+on:
+  push:
+    branches:
+      - main-native
+    paths:
+      - ".github/workflows/bandit-handoff-map.yml"
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Print the launch hand-off code
+        run: |
+          cd MC.Xbox
+          echo "=== App.cpp 925-1015 ==="
+          sed -n '925,1015p' App.cpp
+          echo "=== auth_screen.h 85-135 ==="
+          sed -n '85,135p' ui/auth_screen.h
+          echo "=== swapchain release spots in auth_screen.h ==="
+          grep -n -E "swapChain_\.Reset|swapChain_ = nullptr|swapChain_\.Release|void (Shutdown|Release|Destroy|Suspend|Stop)|bool (Shutdown|Release)" ui/auth_screen.h | head -30
+          echo "=== who calls it near launch ==="
+          grep -rn -E "ReleaseSwap|ShutdownScreen|authScreen.*(Shutdown|Release|Stop|Hide)|ui.*(Shutdown|Release)Graphics" --include=*.cpp --include=*.h . | cut -c1-170 | head -30
