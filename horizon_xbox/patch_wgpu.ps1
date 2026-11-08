@@ -47,7 +47,6 @@ SurfaceTarget::CoreWindow(ref window) => {
 Edit-File "mod.rs" @(
     @('SwapChainPanel(types::ISwapChainPanelNative),', "SwapChainPanel(types::ISwapChainPanelNative),`n    /// UWP / Xbox CoreWindow, held as IUnknown.`n    CoreWindow(windows::core::IUnknown),"),
     @('    pub unsafe fn create_surface_from_swap_chain_panel(', ($ctor + '    pub unsafe fn create_surface_from_swap_chain_panel(')),
-    @('Scaling: Dxgi::DXGI_SCALING_STRETCH,', "Scaling: if matches!(self.target, SurfaceTarget::CoreWindow(_)) {`n                        Dxgi::DXGI_SCALING_NONE`n                    } else {`n                        Dxgi::DXGI_SCALING_STRETCH`n                    },"),
     @('SurfaceTarget::SurfaceHandle(handle) => {', $swapArm),
     @('SurfaceTarget::SwapChainPanel(swap_chain_panel) => {', "SurfaceTarget::CoreWindow(_) => {}`n                    SurfaceTarget::SwapChainPanel(swap_chain_panel) => {"),
     @('| SurfaceTarget::SwapChainPanel(_) => {}', "| SurfaceTarget::SwapChainPanel(_)`n            | SurfaceTarget::CoreWindow(_) => {}")
