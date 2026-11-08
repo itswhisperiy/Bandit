@@ -3,6 +3,8 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::ptr::NonNull;
 
+type Pump = unsafe extern "system" fn() -> i32;
+
 unsafe fn read_wide(ptr: *const u16) -> String {
     if ptr.is_null() {
         return String::new();
@@ -21,16 +23,21 @@ fn elog(dir: &str, msg: &str) {
     }
 }
 
-// Keeps Horizon's client code linked into this DLL.
 #[no_mangle]
 pub extern "system" fn horizon_engine_probe() -> usize {
     let f: fn() = horizon_client::entry::main;
     f as usize
 }
 
-fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String> {
+fn gpu_test(dir: &str, win: usize, width: u32, height: u32, pump: usize) -> Result<(), String> {
     use raw_window_handle::{
         RawDisplayHandle, RawWindowHandle, WinRtWindowHandle, WindowsDisplayHandle,
+    };
+
+    let pump_fn: Option<Pump> = if pump == 0 {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute::<usize, Pump>(pump) })
     };
 
     elog(dir, "gpu: create instance");
@@ -47,7 +54,6 @@ fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String
     let surface = unsafe { instance.create_surface_unsafe(target) }
         .map_err(|e| format!("surface: {e}"))?;
 
-    elog(dir, "gpu: request adapter");
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: Some(&surface),
@@ -55,24 +61,37 @@ fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String
         ..Default::default()
     }))
     .map_err(|e| format!("adapter: {e}"))?;
-    elog(dir, &format!("gpu: adapter {:?}", adapter.get_info()));
 
-    elog(dir, "gpu: request device");
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .map_err(|e| format!("device: {e}"))?;
 
-    let config = surface
+    let err_dir = dir.to_string();
+    device.on_uncaptured_error(std::sync::Arc::new(move |e: wgpu::Error| {
+        elog(&err_dir, &format!("wgpu error: {e}"));
+    }));
+
+    let mut config = surface
         .get_default_config(&adapter, width, height)
         .ok_or("no default surface configuration")?;
-    elog(dir, &format!("gpu: configure surface {:?}", config.format));
+    config.present_mode = wgpu::PresentMode::AutoVsync;
+    elog(dir, &format!("gpu: configure {:?} {:?}", config.format, config.present_mode));
     surface.configure(&device, &config);
 
-    elog(dir, "gpu: drawing for 6 seconds (blue, green, red)");
+    elog(dir, "gpu: drawing for 6 seconds");
     let start = std::time::Instant::now();
     let mut drawn = 0u32;
     let mut skipped = 0u32;
+    let mut last_sec = 0u64;
+    let mut pump_logged = false;
     while start.elapsed().as_secs() < 6 {
+        if let Some(p) = pump_fn {
+            let r = unsafe { p() };
+            if !pump_logged {
+                elog(dir, &format!("pump: on UI thread = {}", r == 1));
+                pump_logged = true;
+            }
+        }
         let frame = match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
             _ => {
@@ -105,8 +124,10 @@ fn gpu_test(dir: &str, win: usize, width: u32, height: u32) -> Result<(), String
         queue.submit(std::iter::once(enc.finish()));
         queue.present(frame);
         drawn += 1;
-        if drawn % 60 == 0 {
-            elog(dir, &format!("gpu: frame {} at {} ms", drawn, start.elapsed().as_millis()));
+        let sec = start.elapsed().as_secs();
+        if sec != last_sec {
+            last_sec = sec;
+            elog(dir, &format!("gpu: {} frames drawn after {} s", drawn, sec));
         }
     }
     elog(dir, &format!("gpu: done, drawn {drawn}, skipped {skipped}"));
@@ -119,13 +140,14 @@ pub unsafe extern "system" fn horizon_engine_gpu_test(
     width: u32,
     height: u32,
     log_dir: *const u16,
+    pump: usize,
 ) -> i32 {
     let dir = read_wide(log_dir);
     let hook_dir = dir.clone();
     std::panic::set_hook(Box::new(move |info| {
         elog(&hook_dir, &format!("PANIC: {info}"));
     }));
-    match std::panic::catch_unwind(|| gpu_test(&dir, core_window as usize, width, height)) {
+    match std::panic::catch_unwind(|| gpu_test(&dir, core_window as usize, width, height, pump)) {
         Ok(Ok(())) => 0,
         Ok(Err(e)) => {
             elog(&dir, &format!("gpu test failed: {e}"));
