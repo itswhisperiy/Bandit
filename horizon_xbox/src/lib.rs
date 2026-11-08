@@ -1,11 +1,16 @@
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fs::OpenOptions;
 use std::io::Write;
 
 use windows::core::{Interface, HSTRING, PCSTR, PCWSTR};
 use windows::ApplicationModel::Core::CoreApplication;
-use windows::UI::Core::CoreWindow;
+use windows::UI::Core::{CoreProcessEventsOption, CoreWindow};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadPackagedLibrary};
+
+thread_local! {
+    static WIN: RefCell<Option<CoreWindow>> = const { RefCell::new(None) };
+}
 
 unsafe fn read_wide(ptr: *const u16) -> String {
     if ptr.is_null() {
@@ -31,7 +36,22 @@ fn get_core_window() -> windows::core::Result<CoreWindow> {
     obj.cast::<CoreWindow>()
 }
 
-type GpuTest = unsafe extern "system" fn(*mut c_void, u32, u32, *const u16) -> i32;
+/// Called by the engine every frame. Returns 1 if it ran on the UI thread and pumped events.
+unsafe extern "system" fn pump() -> i32 {
+    WIN.with(|w| {
+        if let Some(win) = w.borrow().as_ref() {
+            if let Ok(d) = win.Dispatcher() {
+                if d.HasThreadAccess().unwrap_or(false) {
+                    let _ = d.ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+                    return 1;
+                }
+            }
+        }
+        0
+    })
+}
+
+type GpuTest = unsafe extern "system" fn(*mut c_void, u32, u32, *const u16, usize) -> i32;
 
 #[no_mangle]
 pub unsafe extern "system" fn horizon_xbox_run(local_state: *const u16) -> i32 {
@@ -52,6 +72,7 @@ pub unsafe extern "system" fn horizon_xbox_run(local_state: *const u16) -> i32 {
         }
     };
     log(&dir, &format!("bounds: {}x{}", b.Width, b.Height));
+    WIN.with(|w| *w.borrow_mut() = Some(window.clone()));
 
     let name: Vec<u16> = "horizon_engine.dll".encode_utf16().chain(Some(0)).collect();
     let module = match LoadPackagedLibrary(PCWSTR(name.as_ptr()), 0) {
@@ -67,7 +88,8 @@ pub unsafe extern "system" fn horizon_xbox_run(local_state: *const u16) -> i32 {
         return 5;
     };
     let f: GpuTest = std::mem::transmute(f);
-    let rc = f(window.as_raw(), b.Width as u32, b.Height as u32, local_state);
+    let rc = f(window.as_raw(), b.Width as u32, b.Height as u32, local_state, pump as usize);
     log(&dir, &format!("gpu test returned {rc}"));
+    WIN.with(|w| *w.borrow_mut() = None);
     rc
 }
